@@ -14,13 +14,15 @@ class Player {
         this.cubeCam.position.set(x,y,0)
         this.cubeCam.rotation.y = 3.7
         
+        this.score = 0
+        
+        
         /*this.cubeCam.lookAt(new THREE.Vector3(1,2,1.5))*/
         this.cubeCam.renderTarget.texture.minFilter = THREE.LinearMipMapLinearFilter
         
-        scene.add(this.cubeCam)
         
         this.geometry = new THREE.BoxGeometry(0.5,this.h,this.w)
-        this.material = new THREE.MeshPhongMaterial({ antialias: true, logarithmicDepthBuffer: true, envMap: this.cubeCam.renderTarget.texture, ambient: 0xc82222, emissive: 0x222222, side: THREE.BackSide })
+        this.material = new THREE.MeshPhongMaterial({ antialias: true, logarithmicDepthBuffer: true, ambient: 0xc82222, emissive: 0x222222, side: THREE.BackSide })
         this.bar = new THREE.Mesh(this.geometry,this.material)
         _scene.add(this.bar)
         
@@ -95,11 +97,11 @@ class Player {
 class Ball {
     constructor(_scene,x = 0,y = 0){
         
-        this.w = 0.8
-        this.h = 0.8
+        this.w = 0.4
+        this.h = 0.4
         this.vel = new THREE.Vector2()
         
-        this.geometry = new THREE.BoxGeometry(1,this.w,this.h)
+        this.geometry = new THREE.SphereGeometry(this.w,10,10)
         this.material = new THREE.MeshPhongMaterial({ antialias: true, logarithmicDepthBuffer: true/*, emissive: 0xffffff*/})
         this.ball = new THREE.Mesh(this.geometry,this.material)
         
@@ -155,6 +157,49 @@ let background
 let ground
 let down = {};
 
+let composer
+let rgbEffect
+let filmEffect
+let effectBloom
+
+/// Particles system
+
+let particleCount = 10,
+    particles,
+    pMaterial,
+    particleSystem,
+    options,
+    spawnerOptions
+
+function SetupParticles() {
+    
+    particleSystem = new THREE.GPUParticleSystem({
+        maxParticles: 2500
+    })
+    
+    scene.add(particleSystem)
+    
+    options = {
+				position: new THREE.Vector3(),
+				positionRandomness: 0.1,
+				velocity: new THREE.Vector3(),
+				velocityRandomness: 0,
+				color: 0xffffff,
+				colorRandomness: .5,
+				turbulence: 0,
+				lifetime: 1,
+				size: 45,
+				sizeRandomness: 0
+			};
+	spawnerOptions = {
+				spawnRate: 2,
+				horizontalSpeed: 10,
+				verticalSpeed: 10,
+				timeScale: 1
+			};
+     
+}
+
 /// Screen size
 
 let h = document.documentElement.clientHeight,
@@ -167,7 +212,10 @@ let scene = new THREE.Scene()
 function Init(){
     createScene()
     createLights()
+    SetupParticles()
+    SetupShaders()
     createPlayers()
+    loadScore()
     createBall()
     launchBall()
 }
@@ -177,7 +225,7 @@ function createScene(){
  
  /// CAMERA
  camera = new THREE.PerspectiveCamera(75,w / h, 0.1,1000)
- camera.position.z = 10
+ camera.position.z = 15
  camera.position.y = -2
  camera.lookAt(new THREE.Vector3(0,0,0))
  /// RENDERER
@@ -263,7 +311,7 @@ function launchBall(){
         ball.vel.x = 0.1
     }
     else{
-        ball.vel.x = 0.1
+        ball.vel.x = -0.1
     }
 }
 
@@ -287,6 +335,46 @@ function respawnGame(){
     
 }
 
+function loadScore(){
+          
+        let loader = new THREE.FontLoader(),
+        font;
+
+        loader.load('fonts/optimer_regular.typeface.json', function(response){
+        
+            font = response;
+            console.log(font)
+        scoreGeo = new THREE.TextGeometry('0', {
+            font: font,
+            size: 3,
+            height: 0.25
+        });
+        
+            let material = new THREE.MeshBasicMaterial({ color: 0xffffff})
+            
+            player1.scoreText = new THREE.Mesh(scoreGeo,material)
+            player1.scoreText.position.set(player1.x - 6,7,0)
+            
+            player2.scoreText = new THREE.Mesh(scoreGeo,material)
+            player2.scoreText.position.set(player2.x + 4,7,0)
+            
+            scene.add(player1.scoreText)
+            scene.add(player2.scoreText)
+            
+            
+        });
+
+        /*
+        this.ScoreMaterial = new THREE.MeshPhongMaterial({ antialias: true, logarithmicDepthBuffer: true})
+        
+        this.scoreText = new THREE.Mesh(this.scoreGeo,this.ScoreMaterial)
+        
+        this.scoreText.position.set(-10,0,2)
+        
+        scene.add(this.scoreText)
+*/        
+}
+
 function collision(box1,box2){
     
     if((box2.x - box2.w/2 >= box1.x + box1.w) ||
@@ -306,6 +394,34 @@ function AngleBarCollision(_player){
     return ( ( (_player.y - ball.y ) / _player.h) * 2) * 1.25
 }
 
+function SetupShaders() {
+   composer = new THREE.EffectComposer( renderer )
+   composer.addPass( new THREE.RenderPass(scene,camera))
+   
+   
+   filmEffect = new THREE.FilmPass(0.8,0.25,512, false)
+   composer.addPass( filmEffect )
+   
+   effectBloom = new THREE.BloomPass(1.05, 10, 0.2,1024)
+   composer.addPass( effectBloom )         
+
+   rgbEffect = new THREE.ShaderPass( THREE.RGBShiftShader );
+   rgbEffect.uniforms[ 'amount' ].value = 0.003;
+   rgbEffect.uniforms[ 'angle' ].value = 1.25;
+   rgbEffect.renderToScreen = true;
+   composer.addPass( rgbEffect );
+    
+    
+    
+   //effectBloom = new THREE.BloomPass(0.5)
+   
+   //composer.addPass( effectBloom )
+
+   
+   /*composer.addPass( filmEffect )
+    */
+}
+
 /// BIND KEY
 
 document.body.addEventListener('keydown',(e) => {
@@ -320,14 +436,55 @@ document.body.addEventListener('keyup', (e) => {
     
 })
 
+/// RESIZE
+
+window.addEventListener('resize',() => {
+    
+    camera.aspect = window.innerWidth / window.innerHeight
+    camera.updateProjectionMatrix()
+    
+    renderer.setSize(window.innerWidth, window.innerHeight)
+    
+})
+
 /// LOOP
+
+let clock = new THREE.Clock()
+let tick = 0
+let view = new THREE.Vector3()
+
 let render = function render(){
     
     
+
+    let delta = clock.getDelta();
+    
+    tick += (delta * spawnerOptions.timeScale)
+    
+    composer.render(delta)
+    //renderer.render(scene,camera)
+    
+    
+        options.position.x = ball.x
+        options.position.y = ball.y
+		options.position.z = 0
+        
+        for(let i = 0; i < spawnerOptions.spawnRate; i++){
+           particleSystem.spawnParticle(options);  
+        }
+        
+       
+    
+    
+    particleSystem.update(tick)
+    
     requestAnimationFrame(render)
     
+
+    view.set(ball.ball.position.x * 0.25,ball.ball.position.y * 0.1,0)
     
-    renderer.render(scene,camera)
+    camera.lookAt(view)
+    //renderer.render(scene,camera)
     stats.update() 
     
 }
@@ -389,14 +546,11 @@ setInterval(() => {
     collisionMap()
     
 },17) // ~60FPS
-
+/*
 setInterval(() => {
-    
-    
-    /*ground.material.envMap = cubemap.renderTarget.texture
-    cubemap.updateCubeMap(renderer,scene)
-    */
-    player1.updateReflect()
-    player2.updateReflect()
-},70)
-
+        options.position.x = 0
+        options.position.y = 0
+		options.position.z = 0
+        particleSystem.spawnParticle(options);
+},100)
+*/
