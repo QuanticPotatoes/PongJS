@@ -9,12 +9,26 @@ class Player {
         this.w = 0.5
         this.h = 4
         this.vel = new THREE.Vector2()
+        this.scoreText = undefined
         
         this.cubeCam = new THREE.CubeCamera(0.1,100,256)
         this.cubeCam.position.set(x,y,0)
         this.cubeCam.rotation.y = 3.7
         
         this.score = 0
+        
+        this.animOffset =  [10.2,x]
+        
+        if(x < 0){
+            this.animOffset = [-10.2,x]
+        }
+        
+                
+
+        
+
+        /*this.animation.chain(new TWEEN.Tween({w: 0.35}).to({w: this.w},500))
+        this.animation.easing(TWEEN.Easing.Elastic.In)*/
         
         
         /*this.cubeCam.lookAt(new THREE.Vector3(1,2,1.5))*/
@@ -30,6 +44,26 @@ class Player {
         //this.material.rotation.y = 2
         this.x = x
         this.y = y
+        
+        this.animation = new TWEEN.Tween(this.bar.position).to({x:this.animOffset[0]},200).onComplete(() => {
+            (new TWEEN.Tween(this.bar.position).to({x:this.animOffset[1]},200)).start()
+        })
+        
+        this.animation.easing(TWEEN.Easing.Elastic.Out)
+
+        
+    }
+    
+    winRound() {
+        
+        this.score++
+        
+        this.scoreText.geometry = new THREE.TextGeometry(this.score.toString(), {
+            font: font,
+            size: 3,
+            height: 0.25
+        });
+        
         
     }
     
@@ -75,11 +109,11 @@ class Player {
             
         }
 
-        
     }
     
     respawn(y) {
-        this.y = 0
+        (new TWEEN.Tween(this).to({y:0},500)).start()
+        //this.y = 0
         this.vel = new THREE.Vector2()
     }
     
@@ -100,6 +134,7 @@ class Ball {
         this.w = 0.4
         this.h = 0.4
         this.vel = new THREE.Vector2()
+        this.respawnAnimation = new TWEEN.Tween(this).to({x: 0,y:0},1000).easing(TWEEN.Easing.Quintic.Out)
         
         this.geometry = new THREE.SphereGeometry(this.w,10,10)
         this.material = new THREE.MeshPhongMaterial({ antialias: true, logarithmicDepthBuffer: true/*, emissive: 0xffffff*/})
@@ -119,11 +154,8 @@ class Ball {
     
     respawn(){
         
-        this.vel = new THREE.Vector2()
-        this.x = 0
-        this.y = 0
-        
-        
+        this.vel = new THREE.Vector2()    
+        this.respawnAnimation.start()
     }
     
     get x() {
@@ -143,24 +175,28 @@ class Ball {
     }  
 }
 
-let renderer
-let camera
-let stats
+let renderer,
+    camera,
+    stats
 
-let player1
-let player2
-let ball
-let cubemap 
+let player1,
+    player2,
+    font,
+    ball,
+    cubemap,
+    randLaunch = Math.round(Math.random())
 
 let hemiLight
 let background
 let ground
 let down = {};
 
-let composer
-let rgbEffect
-let filmEffect
-let effectBloom
+let composer,
+    rgbEffect,
+    filmEffect,
+    correctColor,
+    effectBloom,
+    effectFXAA
 
 /// Particles system
 
@@ -307,18 +343,27 @@ function createBall(){
 
 
 function launchBall(){
-    if(Math.random(0,1) > 0.5){
+    if(randLaunch === 1){
         ball.vel.x = 0.1
+        randLaunch = 0
     }
     else{
         ball.vel.x = -0.1
+        randLaunch = 1
     }
 }
 
 function collisionMap(){
-    if(ball.x < -11 || ball.x > 11){
-        respawnGame()
-    }
+    if(ball.x < -11)
+        {
+            player1.winRound()
+            respawnGame()
+        }
+        else if(ball.x > 11)
+        {
+            player2.winRound()
+            respawnGame()
+        }
 }
 
 function respawnGame(){
@@ -328,17 +373,20 @@ function respawnGame(){
     player1.respawn()
     player2.respawn()
     ball.respawn()
+    ball.respawnAnimation.onComplete(() => {
     
     setTimeout(()=>{
         launchBall()
     },500)
     
+    })
+
+    
 }
 
 function loadScore(){
           
-        let loader = new THREE.FontLoader(),
-        font;
+        let loader = new THREE.FontLoader()
 
         loader.load('fonts/optimer_regular.typeface.json', function(response){
         
@@ -405,21 +453,11 @@ function SetupShaders() {
    effectBloom = new THREE.BloomPass(1.05, 10, 0.2,1024)
    composer.addPass( effectBloom )         
 
-   rgbEffect = new THREE.ShaderPass( THREE.RGBShiftShader );
+   rgbEffect = new THREE.ShaderPass( THREE.RGBShiftShader )
    rgbEffect.uniforms[ 'amount' ].value = 0.003;
    rgbEffect.uniforms[ 'angle' ].value = 1.25;
    rgbEffect.renderToScreen = true;
    composer.addPass( rgbEffect );
-    
-    
-    
-   //effectBloom = new THREE.BloomPass(0.5)
-   
-   //composer.addPass( effectBloom )
-
-   
-   /*composer.addPass( filmEffect )
-    */
 }
 
 /// BIND KEY
@@ -487,6 +525,8 @@ let render = function render(){
     //renderer.render(scene,camera)
     stats.update() 
     
+    TWEEN.update()
+    
 }
 
 Init()
@@ -506,6 +546,8 @@ setInterval(() => {
         
         ball.vel.rotateAround(player2.vel, ( ( (player2.y - ball.y ) / player2.h) * 2) * 1.25)
         
+        player2.animation.start()
+        
         
     }
     else if(collision(player1,ball)){
@@ -517,6 +559,8 @@ setInterval(() => {
         ball.x = -9
         
         ball.vel.rotateAround(player1.vel,- ( ( (player1.y - ball.y ) / player1.h) * 2) * 1.25)
+        
+        player1.animation.start()
     }
     
     /// position des barres
